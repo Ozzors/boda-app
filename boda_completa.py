@@ -6,18 +6,41 @@ from io import BytesIO
 st.set_page_config(page_title="Planificador de Boda", layout="wide")
 
 # ---------- FUNCIONES DE CARGA Y GUARDADO ----------
-def cargar_csv(nombre_archivo, columnas):
+def cargar_csv(nombre_archivo, columnas, datos_iniciales=None):
     try:
         return pd.read_csv(nombre_archivo)
     except FileNotFoundError:
-        return pd.DataFrame(columns=columnas)
+        if datos_iniciales is not None:
+            return pd.DataFrame(datos_iniciales, columns=columnas)
+        else:
+            return pd.DataFrame(columns=columnas)
 
 def guardar_csv(df, nombre_archivo):
     df.to_csv(nombre_archivo, index=False)
 
+# Preparativos iniciales (los que me mencionaste)
+preparativos_iniciales = [
+    {"Elemento": "Bouquet de la novia", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Vestido de la novia", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Maquillaje y peinado", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Traje de novio", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Corbata, pin y medias", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Torta", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Fotógrafo", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Notario", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Anillos", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Estado de envío de pre-invitaciones", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Invitaciones con detalle", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Locación del evento", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Decoración", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Compra de cuchillo de torta", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Bolígrafo de la firma", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+    {"Elemento": "Habitación del hotel", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
+]
+
 # ---------- CARGA DE DATOS EXISTENTES ----------
 df_invitados = cargar_csv("invitados.csv", ["Nombre", "Acompañantes", "Relación", "Confirmación", "Comentarios"])
-df_preparativos = cargar_csv("preparativos.csv", ["Elemento", "Estado", "Costo", "Notas"])
+df_preparativos = cargar_csv("preparativos.csv", ["Elemento", "Estado", "Costo", "Notas"], preparativos_iniciales)
 
 # ---------- INTERFAZ ----------
 st.title("💒 Planificador de Boda")
@@ -120,5 +143,3 @@ st.dataframe(df_preparativos, use_container_width=True)
 total = df_preparativos["Costo"].sum()
 st.subheader("💰 Presupuesto estimado")
 st.metric("Total estimado", f"${total:,.2f}")
-
-
