@@ -138,7 +138,19 @@ with tabs[1]:
                 guardar_csv(df_preparativos, "preparativos.csv")
                 st.success("Eliminado")
 
-    st.dataframe(df_preparativos, use_container_width=True)
+    # Mostrar tabla con colores por estado
+    st.markdown("### Estado de Preparativos (con colores)")
+
+    def color_estado(estado):
+        colores = {
+            "Pendiente": "#FFCDD2",     # Rojo claro
+            "En progreso": "#FFF9C4",   # Amarillo claro
+            "Completado": "#C8E6C9"     # Verde claro
+        }
+        return f"background-color: {colores.get(estado, 'white')}"
+
+    df_estilo = df_preparativos.style.applymap(color_estado, subset=["Estado"])
+    st.dataframe(df_estilo, use_container_width=True)
 
 # ---------- TAB 3: PRESUPUESTO ----------
 with tabs[2]:
