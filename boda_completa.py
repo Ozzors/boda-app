@@ -1,126 +1,124 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from io import BytesIO
 
-# Configurar la página
 st.set_page_config(page_title="Planificador de Boda", layout="wide")
 
-# Inicializar los DataFrames en la sesión si no existen
-if "df_invitados" not in st.session_state:
-    st.session_state.df_invitados = pd.DataFrame(columns=["Nombre", "Acompañantes", "Relación", "Comentarios", "Confirmado"])
+# ---------- FUNCIONES DE CARGA Y GUARDADO ----------
+def cargar_csv(nombre_archivo, columnas):
+    try:
+        return pd.read_csv(nombre_archivo)
+    except FileNotFoundError:
+        return pd.DataFrame(columns=columnas)
 
-if "df_preparativos" not in st.session_state:
-    elementos = [
-        "Bouquet de la novia", "Vestido de la novia", "Maquillaje y peinado", "Traje del novio",
-        "Corbata", "Pin", "Medias", "Torta", "Fotógrafo", "Notario", "Anillos",
-        "Pre-invitaciones", "Invitaciones con detalle", "Locación del evento", "Decoración",
-        "Cuchillo de torta", "Bolígrafo para la firma", "Habitación de hotel"
-    ]
-    st.session_state.df_preparativos = pd.DataFrame({
-        "Elemento": elementos,
-        "Estado": ["Pendiente"] * len(elementos),
-        "Costo ($)": [0] * len(elementos),
-        "Notas": [""] * len(elementos)
-    })
+def guardar_csv(df, nombre_archivo):
+    df.to_csv(nombre_archivo, index=False)
 
-# Calcular contador regresivo
-boda_fecha = datetime(2025, 8, 9, 15, 0, 0)  # 9 agosto 2025, 3:00 PM
-ahora = datetime.now()
-faltan = boda_fecha - ahora
-dias = faltan.days
-horas = faltan.seconds // 3600
+# ---------- CARGA DE DATOS EXISTENTES ----------
+df_invitados = cargar_csv("invitados.csv", ["Nombre", "Acompañantes", "Relación", "Confirmación", "Comentarios"])
+df_preparativos = cargar_csv("preparativos.csv", ["Elemento", "Estado", "Costo", "Notas"])
 
-# Mostrar título y contador
+# ---------- INTERFAZ ----------
 st.title("💒 Planificador de Boda")
-st.subheader(f"⏳ Faltan **{dias} días y {horas} horas** para la boda")
+col1, col2 = st.columns([2, 1])
 
-# Crear pestañas
-tab_invitados, tab_preparativos, tab_presupuesto, tab_exportar = st.tabs([
-    "👥 Invitados", "📋 Preparativos", "💰 Presupuesto", "⬇️ Exportar"
-])
+with col2:
+    fecha_boda = datetime(2025, 8, 9, 15, 0)
+    ahora = datetime.now()
+    tiempo_restante = fecha_boda - ahora
+    dias = tiempo_restante.days
+    horas = tiempo_restante.seconds // 3600
+    st.metric("⏳ Días para la boda", f"{dias} días, {horas} horas")
 
-# Sección: Invitados
-with tab_invitados:
-    st.header("👥 Lista de Invitados")
+# ---------- INVITADOS ----------
+st.header("👥 Lista de invitados")
 
-    with st.form("form_invitado"):
-        col1, col2, col3 = st.columns(3)
-        nombre = col1.text_input("Nombre del invitado")
-        acompanantes = col2.number_input("Acompañantes", min_value=0, value=0)
-        relacion = col3.text_input("Relación")
-
-        comentarios = st.text_input("Comentarios")
-        confirmado = st.checkbox("¿Confirmado?")
-        submitted = st.form_submit_button("Agregar invitado")
-
+with st.expander("➕ Agregar nuevo invitado"):
+    with st.form("form_invitado", clear_on_submit=True):
+        nombre = st.text_input("Nombre")
+        acompanantes = st.number_input("Cantidad de acompañantes", min_value=0, step=1)
+        relacion = st.selectbox("Relación", ["Familia", "Amigo", "Trabajo", "Otro"])
+        confirmacion = st.selectbox("Confirmación", ["Pendiente", "Confirmado", "No asistirá"])
+        comentario = st.text_input("Comentario")
+        submitted = st.form_submit_button("Agregar")
         if submitted and nombre:
             nuevo = {
                 "Nombre": nombre,
                 "Acompañantes": acompanantes,
                 "Relación": relacion,
-                "Comentarios": comentarios,
-                "Confirmado": confirmado
+                "Confirmación": confirmacion,
+                "Comentarios": comentario
             }
-            st.session_state.df_invitados = pd.concat([st.session_state.df_invitados, pd.DataFrame([nuevo])], ignore_index=True)
-            st.success("Invitado agregado correctamente ✅")
+            df_invitados = pd.concat([df_invitados, pd.DataFrame([nuevo])], ignore_index=True)
+            guardar_csv(df_invitados, "invitados.csv")
+            st.success(f"Invitado {nombre} agregado")
 
-    # Mostrar tabla editable
-    st.markdown("### Editar invitados")
-    st.session_state.df_invitados = st.data_editor(
-        st.session_state.df_invitados,
-        num_rows="dynamic",
-        use_container_width=True
-    )
+# Modificar o eliminar invitados
+if not df_invitados.empty:
+    st.subheader("✏️ Editar invitados existentes")
+    index = st.selectbox("Selecciona un invitado para editar", df_invitados.index, format_func=lambda i: df_invitados.at[i, "Nombre"])
+    with st.form("edit_invitado"):
+        df_row = df_invitados.loc[index]
+        nuevo_nombre = st.text_input("Nombre", value=df_row["Nombre"])
+        nuevo_acomp = st.number_input("Acompañantes", min_value=0, value=int(df_row["Acompañantes"]))
+        nueva_relacion = st.selectbox("Relación", ["Familia", "Amigo", "Trabajo", "Otro"], index=["Familia", "Amigo", "Trabajo", "Otro"].index(df_row["Relación"]))
+        nueva_confirm = st.selectbox("Confirmación", ["Pendiente", "Confirmado", "No asistirá"], index=["Pendiente", "Confirmado", "No asistirá"].index(df_row["Confirmación"]))
+        nuevo_coment = st.text_input("Comentario", value=df_row["Comentarios"])
+        guardar_cambios = st.form_submit_button("Guardar cambios")
+        eliminar = st.form_submit_button("Eliminar invitado")
+        if guardar_cambios:
+            df_invitados.loc[index] = [nuevo_nombre, nuevo_acomp, nueva_relacion, nueva_confirm, nuevo_coment]
+            guardar_csv(df_invitados, "invitados.csv")
+            st.success("Cambios guardados")
+        elif eliminar:
+            df_invitados = df_invitados.drop(index).reset_index(drop=True)
+            guardar_csv(df_invitados, "invitados.csv")
+            st.success("Invitado eliminado")
 
-# Sección: Preparativos
-with tab_preparativos:
-    st.header("📋 Estado de Preparativos")
+st.dataframe(df_invitados, use_container_width=True)
 
-    estado_opciones = ["Pendiente", "En progreso", "Completo"]
+# ---------- PREPARATIVOS ----------
+st.header("📋 Seguimiento de preparativos")
 
-    for i, row in st.session_state.df_preparativos.iterrows():
-        with st.expander(f"📌 {row['Elemento']}"):
-            col1, col2 = st.columns(2)
-            estado = col1.selectbox("Estado", estado_opciones, index=estado_opciones.index(row["Estado"]), key=f"estado_{i}")
-            costo = col2.number_input("Costo ($)", min_value=0, value=int(row["Costo ($)"]), key=f"costo_{i}")
-            notas = st.text_area("Notas", value=row["Notas"], key=f"notas_{i}")
+with st.expander("➕ Agregar nuevo elemento"):
+    with st.form("form_preparativo", clear_on_submit=True):
+        elemento = st.text_input("Elemento")
+        estado = st.selectbox("Estado", ["Pendiente", "En progreso", "Completado"])
+        costo = st.number_input("Costo estimado ($)", min_value=0.0, step=1.0)
+        nota = st.text_area("Notas")
+        submitted = st.form_submit_button("Agregar")
+        if submitted and elemento:
+            nuevo = {"Elemento": elemento, "Estado": estado, "Costo": costo, "Notas": nota}
+            df_preparativos = pd.concat([df_preparativos, pd.DataFrame([nuevo])], ignore_index=True)
+            guardar_csv(df_preparativos, "preparativos.csv")
+            st.success(f"Elemento '{elemento}' agregado")
 
-            st.session_state.df_preparativos.at[i, "Estado"] = estado
-            st.session_state.df_preparativos.at[i, "Costo ($)"] = costo
-            st.session_state.df_preparativos.at[i, "Notas"] = notas
+if not df_preparativos.empty:
+    st.subheader("✏️ Editar elementos existentes")
+    idx = st.selectbox("Selecciona un elemento", df_preparativos.index, format_func=lambda i: df_preparativos.at[i, "Elemento"])
+    with st.form("edit_preparativo"):
+        fila = df_preparativos.loc[idx]
+        nuevo_elem = st.text_input("Elemento", value=fila["Elemento"])
+        nuevo_estado = st.selectbox("Estado", ["Pendiente", "En progreso", "Completado"], index=["Pendiente", "En progreso", "Completado"].index(fila["Estado"]))
+        nuevo_costo = st.number_input("Costo", value=float(fila["Costo"]))
+        nueva_nota = st.text_area("Notas", value=fila["Notas"])
+        guardar = st.form_submit_button("Guardar cambios")
+        eliminar = st.form_submit_button("Eliminar")
+        if guardar:
+            df_preparativos.loc[idx] = [nuevo_elem, nuevo_estado, nuevo_costo, nueva_nota]
+            guardar_csv(df_preparativos, "preparativos.csv")
+            st.success("Cambios guardados")
+        elif eliminar:
+            df_preparativos = df_preparativos.drop(idx).reset_index(drop=True)
+            guardar_csv(df_preparativos, "preparativos.csv")
+            st.success("Elemento eliminado")
 
-# Sección: Presupuesto
-with tab_presupuesto:
-    st.header("💰 Presupuesto total")
+st.dataframe(df_preparativos, use_container_width=True)
 
-    total = st.session_state.df_preparativos["Costo ($)"].sum()
-    st.metric(label="Costo total estimado de la boda", value=f"${total:,.2f}")
+# ---------- PRESUPUESTO TOTAL ----------
+total = df_preparativos["Costo"].sum()
+st.subheader("💰 Presupuesto estimado")
+st.metric("Total estimado", f"${total:,.2f}")
 
-    st.dataframe(
-        st.session_state.df_preparativos[["Elemento", "Costo ($)", "Estado"]],
-        use_container_width=True
-    )
 
-# Sección: Exportar
-with tab_exportar:
-    st.header("⬇️ Exportar datos (formato .CSV)")
-
-    st.markdown("Puedes descargar por separado las tablas en archivos `.csv`:")
-
-    # Invitados
-    csv_invitados = st.session_state.df_invitados.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Descargar invitados (.csv)",
-        data=csv_invitados,
-        file_name="invitados.csv",
-        mime='text/csv'
-    )
-
-    # Preparativos
-    csv_preparativos = st.session_state.df_preparativos.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="📥 Descargar preparativos (.csv)",
-        data=csv_preparativos,
-        file_name="preparativos.csv",
-        mime='text/csv'
-    )
