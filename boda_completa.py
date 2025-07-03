@@ -100,6 +100,18 @@ with tabs[0]:
                 guardar_csv(df_invitados, "invitados.csv")
                 st.success("Eliminado")
 
+    # ---- CONTADOR DE INVITADOS ----
+    confirmados = df_invitados[df_invitados["Confirmación"] == "Confirmado"]
+    pendientes = df_invitados[df_invitados["Confirmación"] == "Pendiente"]
+    total_confirmados = (confirmados["Acompañantes"] + 1).sum()
+    total_pendientes = (pendientes["Acompañantes"] + 1).sum()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("🎉 Invitados confirmados", int(total_confirmados))
+    with col2:
+        st.metric("⏳ Invitados pendientes", int(total_pendientes))
+
     st.dataframe(df_invitados, use_container_width=True)
 
 # ---------- TAB 2: PREPARATIVOS ----------
@@ -138,9 +150,7 @@ with tabs[1]:
                 guardar_csv(df_preparativos, "preparativos.csv")
                 st.success("Eliminado")
 
-    # Mostrar tabla con colores por estado
-    st.markdown("### Estado de Preparativos (con colores)")
-
+    # ---- VISUAL CON COLORES ----
     def color_estado(estado):
         colores = {
             "Pendiente": "#FFCDD2",     # Rojo claro
