@@ -89,7 +89,7 @@ with col1:
 with col2:
     if st.button("🔄 Actualizar datos desde GitHub", key="actualizar_todo"):
         recargar_desde_github()
-        st.experimental_rerun()
+        st.session_state["recargar"] = True
 
 fecha_boda = datetime(2025, 8, 9, 15, 0, 0)
 ahora = datetime.now()
@@ -119,7 +119,7 @@ with tab1:
             }
             st.session_state.df_invitados = pd.concat([st.session_state.df_invitados, pd.DataFrame([nuevo])], ignore_index=True)
             st.success(f"Invitado {nombre_nuevo} agregado.")
-            st.experimental_rerun()
+            st.session_state["recargar"] = True
 
     if not st.session_state.df_invitados.empty:
         st.subheader("Editar invitado existente")
@@ -150,7 +150,7 @@ with tab1:
             if st.button("Guardar cambios", key="guardar_inv"):
                 st.session_state.df_invitados.loc[idx] = [nombre_edit, acompañantes_edit, relacion_edit, comentarios_edit, confirmacion_edit]
                 st.success("Invitado actualizado.")
-                st.experimental_rerun()
+                st.session_state["recargar"] = True
 
         st.subheader("Lista completa de invitados")
         st.dataframe(st.session_state.df_invitados)
@@ -165,7 +165,7 @@ with tab1:
             if invitados_para_borrar:
                 st.session_state.df_invitados = st.session_state.df_invitados[~st.session_state.df_invitados["Nombre"].isin(invitados_para_borrar)].reset_index(drop=True)
                 st.success(f"Invitado(s) {', '.join(invitados_para_borrar)} borrado(s).")
-                st.experimental_rerun()
+                st.session_state["recargar"] = True
             else:
                 st.warning("No seleccionaste ningún invitado para borrar.")
     else:
@@ -194,7 +194,7 @@ with tab2:
             }
             st.session_state.df_preparativos = pd.concat([st.session_state.df_preparativos, pd.DataFrame([nueva_tarea])], ignore_index=True)
             st.success(f"Tarea '{tarea_nueva}' agregada.")
-            st.experimental_rerun()
+            st.session_state["recargar"] = True
 
     if not st.session_state.df_preparativos.empty:
         st.subheader("Editar tarea existente")
@@ -212,7 +212,7 @@ with tab2:
             if st.button("Guardar cambios", key="guardar_prep"):
                 st.session_state.df_preparativos.loc[idx_p] = [tarea_edit, costo_edit, estado_edit, notas_edit]
                 st.success("Tarea actualizada.")
-                st.experimental_rerun()
+                st.session_state["recargar"] = True
 
         def color_estado(val):
             if val == "En progreso":
@@ -236,7 +236,7 @@ with tab2:
             if tareas_para_borrar:
                 st.session_state.df_preparativos = st.session_state.df_preparativos[~st.session_state.df_preparativos["Tarea"].isin(tareas_para_borrar)].reset_index(drop=True)
                 st.success(f"Tarea(s) {', '.join(tareas_para_borrar)} borrada(s).")
-                st.experimental_rerun()
+                st.session_state["recargar"] = True
             else:
                 st.warning("No seleccionaste ninguna tarea para borrar.")
     else:
@@ -263,3 +263,8 @@ with tab4:
         file_name="boda_datos.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+# Controlar rerun solo cuando la variable recargar esté en True
+if st.session_state.get("recargar", False):
+    st.session_state["recargar"] = False
+    st.experimental_rerun()
