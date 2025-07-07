@@ -47,7 +47,7 @@ def guardar_en_github(nombre_archivo, contenido_csv, mensaje_commit):
         token = st.secrets["GITHUB_TOKEN"]
     except KeyError:
         st.warning("No está configurado el token de GitHub en st.secrets. No se guardarán los cambios automáticamente.")
-        return
+        return False
 
     repo_name = "Ozzors/boda-app"
     g = Github(token)
@@ -58,6 +58,14 @@ def guardar_en_github(nombre_archivo, contenido_csv, mensaje_commit):
         repo.update_file(archivo.path, mensaje_commit, contenido_csv, archivo.sha)
     except Exception:
         repo.create_file(nombre_archivo, mensaje_commit, contenido_csv)
+    return True
+
+# Función para recargar invitados desde GitHub y actualizar session_state
+def recargar_invitados():
+    df = cargar_csv(URL_INVITADOS)
+    if not df.empty:
+        st.session_state.df_invitados = df
+        st.success("Datos de invitados recargados desde GitHub.")
 
 # --- App ---
 
@@ -74,6 +82,21 @@ tab1, tab2, tab3, tab4 = st.tabs(["Invitados", "Preparativos", "Presupuesto", "E
 
 with tab1:
     st.header("Invitados")
+
+    # Botones para sincronizar manualmente
+    col_guardar, col_cargar = st.columns(2)
+    with col_guardar:
+        if st.button("💾 Guardar invitados en GitHub"):
+            csv_data = st.session_state.df_invitados.to_csv(index=False)
+            exito = guardar_en_github("invitados.csv", csv_data, "Guardado manual: actualización de invitados")
+            if exito:
+                st.success("Invitados guardados correctamente en GitHub.")
+            else:
+                st.error("Error al guardar invitados en GitHub.")
+    with col_cargar:
+        if st.button("🔄 Recargar invitados desde GitHub"):
+            recargar_invitados()
+
     with st.expander("Agregar nuevo invitado"):
         nombre_nuevo = st.text_input("Nombre", key="nombre_nuevo")
         acompañantes_nuevo = st.number_input("Acompañantes (0 si va solo)", min_value=0, step=1, key="acompañantes_nuevo")
@@ -82,17 +105,18 @@ with tab1:
         confirmacion_nuevo = st.selectbox("Confirmación", ["Sí", "No", "Por definir"], key="confirmacion_nuevo")
 
         if st.button("Agregar invitado"):
-            nuevo = {
-                "Nombre": nombre_nuevo,
-                "Acompañantes": acompañantes_nuevo,
-                "Relación": relacion_nuevo,
-                "Comentarios": comentarios_nuevo,
-                "Confirmación": confirmacion_nuevo
-            }
-            st.session_state.df_invitados = pd.concat([st.session_state.df_invitados, pd.DataFrame([nuevo])], ignore_index=True)
-            guardar_en_github("invitados.csv", st.session_state.df_invitados.to_csv(index=False), "Auto-guardado: invitado agregado")
-            st.success(f"Invitado {nombre_nuevo} agregado.")
-            st.experimental_rerun()
+            if nombre_nuevo.strip() == "":
+                st.warning("El nombre no puede estar vacío.")
+            else:
+                nuevo = {
+                    "Nombre": nombre_nuevo.strip(),
+                    "Acompañantes": acompañantes_nuevo,
+                    "Relación": relacion_nuevo.strip(),
+                    "Comentarios": comentarios_nuevo.strip(),
+                    "Confirmación": confirmacion_nuevo
+                }
+                st.session_state.df_invitados = pd.concat([st.session_state.df_invitados, pd.DataFrame([nuevo])], ignore_index=True)
+                st.success(f"Invitado {nombre_nuevo} agregado. Recuerda guardar los cambios con el botón 💾.")
 
     if not st.session_state.df_invitados.empty:
         st.subheader("Editar invitado existente")
@@ -121,10 +145,11 @@ with tab1:
             )
 
             if st.button("Guardar cambios", key="guardar_inv"):
-                st.session_state.df_invitados.loc[idx] = [nombre_edit, acompañantes_edit, relacion_edit, comentarios_edit, confirmacion_edit]
-                guardar_en_github("invitados.csv", st.session_state.df_invitados.to_csv(index=False), "Auto-guardado: invitado editado")
-                st.success("Invitado actualizado.")
-                st.experimental_rerun()
+                if nombre_edit.strip() == "":
+                    st.warning("El nombre no puede estar vacío.")
+                else:
+                    st.session_state.df_invitados.loc[idx] = [nombre_edit.strip(), acompañantes_edit, relacion_edit.strip(), comentarios_edit.strip(), confirmacion_edit]
+                    st.success("Invitado actualizado. Recuerda guardar los cambios con el botón 💾.")
 
         st.subheader("Lista completa de invitados")
         st.dataframe(st.session_state.df_invitados)
@@ -147,15 +172,15 @@ with tab2:
 
         if st.button("Agregar tarea"):
             nueva_tarea = {
-                "Tarea": tarea_nueva,
+                "Tarea": tarea_nueva.strip(),
                 "Costo": costo_nuevo,
                 "Estado": estado_nuevo,
-                "Notas": notas_nuevo
+                "Notas": notas_nuevo.strip()
             }
             st.session_state.df_preparativos = pd.concat([st.session_state.df_preparativos, pd.DataFrame([nueva_tarea])], ignore_index=True)
             guardar_en_github("preparativos.csv", st.session_state.df_preparativos.to_csv(index=False), "Auto-guardado: tarea agregada")
             st.success(f"Tarea '{tarea_nueva}' agregada.")
-            st.experimental_rerun()
+            # Aquí puedes decidir si hacer rerun o no, depende de tu flujo
 
     if not st.session_state.df_preparativos.empty:
         st.subheader("Editar tarea existente")
@@ -171,10 +196,10 @@ with tab2:
             notas_edit = st.text_area("Notas", value=tarea["Notas"], key="notas_edit")
 
             if st.button("Guardar cambios", key="guardar_prep"):
-                st.session_state.df_preparativos.loc[idx_p] = [tarea_edit, costo_edit, estado_edit, notas_edit]
+                st.session_state.df_preparativos.loc[idx_p] = [tarea_edit.strip(), costo_edit, estado_edit, notas_edit.strip()]
                 guardar_en_github("preparativos.csv", st.session_state.df_preparativos.to_csv(index=False), "Auto-guardado: tarea editada")
                 st.success("Tarea actualizada.")
-                st.experimental_rerun()
+                # Aquí también puedes decidir si hacer rerun o no
 
         def color_estado(val):
             if val == "En progreso":
