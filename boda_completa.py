@@ -41,8 +41,8 @@ def to_excel(dfs_dict):
             df.to_excel(writer, index=False, sheet_name=sheet_name)
     return output.getvalue()
 
-# Función para guardar en GitHub
-def guardar_en_github(nombre_archivo, contenido_csv, mensaje_commit):
+# Función para guardar en GitHub (ambos dataframes)
+def guardar_todos_en_github():
     try:
         token = st.secrets["GITHUB_TOKEN"]
     except KeyError:
@@ -54,10 +54,18 @@ def guardar_en_github(nombre_archivo, contenido_csv, mensaje_commit):
     repo = g.get_repo(repo_name)
 
     try:
-        archivo = repo.get_contents(nombre_archivo)
-        repo.update_file(archivo.path, mensaje_commit, contenido_csv, archivo.sha)
+        # Invitados
+        contenido_invitados = st.session_state.df_invitados.to_csv(index=False)
+        archivo_invitados = repo.get_contents("invitados.csv")
+        repo.update_file(archivo_invitados.path, "Guardado manual: actualización de invitados", contenido_invitados, archivo_invitados.sha)
+        # Preparativos
+        contenido_preparativos = st.session_state.df_preparativos.to_csv(index=False)
+        archivo_preparativos = repo.get_contents("preparativos.csv")
+        repo.update_file(archivo_preparativos.path, "Guardado manual: actualización de preparativos", contenido_preparativos, archivo_preparativos.sha)
     except Exception:
-        repo.create_file(nombre_archivo, mensaje_commit, contenido_csv)
+        # Si no existen los archivos, los crea
+        repo.create_file("invitados.csv", "Guardado manual: creación de invitados", st.session_state.df_invitados.to_csv(index=False))
+        repo.create_file("preparativos.csv", "Guardado manual: creación de preparativos", st.session_state.df_preparativos.to_csv(index=False))
     return True
 
 # Función para recargar invitados desde GitHub y actualizar session_state
@@ -66,6 +74,13 @@ def recargar_invitados():
     if not df.empty:
         st.session_state.df_invitados = df
         st.success("Datos de invitados recargados desde GitHub.")
+
+# Función para recargar preparativos desde GitHub y actualizar session_state
+def recargar_preparativos():
+    df = cargar_csv(URL_PREPARATIVOS)
+    if not df.empty:
+        st.session_state.df_preparativos = df
+        st.success("Datos de preparativos recargados desde GitHub.")
 
 # --- App ---
 
@@ -83,19 +98,16 @@ tab1, tab2, tab3, tab4 = st.tabs(["Invitados", "Preparativos", "Presupuesto", "E
 with tab1:
     st.header("Invitados")
 
-    # Botones para sincronizar manualmente
-    col_guardar, col_cargar = st.columns(2)
-    with col_guardar:
-        if st.button("💾 Guardar invitados en GitHub"):
-            csv_data = st.session_state.df_invitados.to_csv(index=False)
-            exito = guardar_en_github("invitados.csv", csv_data, "Guardado manual: actualización de invitados")
-            if exito:
-                st.success("Invitados guardados correctamente en GitHub.")
-            else:
-                st.error("Error al guardar invitados en GitHub.")
-    with col_cargar:
-        if st.button("🔄 Recargar invitados desde GitHub"):
-            recargar_invitados()
+    # Botones para sincronizar manualmente (guardar ambos)
+    if st.button("💾 Guardar invitados y preparativos en GitHub"):
+        exito = guardar_todos_en_github()
+        if exito:
+            st.success("Datos guardados correctamente en GitHub.")
+        else:
+            st.error("Error al guardar datos en GitHub.")
+
+    if st.button("🔄 Recargar invitados desde GitHub"):
+        recargar_invitados()
 
     with st.expander("Agregar nuevo invitado"):
         nombre_nuevo = st.text_input("Nombre", key="nombre_nuevo")
@@ -135,7 +147,7 @@ with tab1:
             try:
                 idx_confirmacion = opciones_confirmacion.index(invitado["Confirmación"])
             except ValueError:
-                idx_confirmacion = 0  # Valor por defecto si no encuentra
+                idx_confirmacion = 0
 
             confirmacion_edit = st.selectbox(
                 "Confirmación",
@@ -151,6 +163,16 @@ with tab1:
                     st.session_state.df_invitados.loc[idx] = [nombre_edit.strip(), acompañantes_edit, relacion_edit.strip(), comentarios_edit.strip(), confirmacion_edit]
                     st.success("Invitado actualizado. Recuerda guardar los cambios con el botón 💾.")
 
+        st.subheader("Borrar invitado(s)")
+        invitados_para_borrar = st.multiselect("Selecciona uno o varios invitados para borrar", st.session_state.df_invitados["Nombre"].tolist(), key="borrar_invitados")
+
+        if st.button("Borrar seleccionado(s)"):
+            if invitados_para_borrar:
+                st.session_state.df_invitados = st.session_state.df_invitados[~st.session_state.df_invitados["Nombre"].isin(invitados_para_borrar)].reset_index(drop=True)
+                st.success(f"Invitado(s) {', '.join(invitados_para_borrar)} borrado(s). Recuerda guardar los cambios con el botón 💾.")
+            else:
+                st.warning("No seleccionaste ningún invitado para borrar.")
+
         st.subheader("Lista completa de invitados")
         st.dataframe(st.session_state.df_invitados)
     else:
@@ -164,6 +186,10 @@ with tab1:
 
 with tab2:
     st.header("Preparativos")
+
+    if st.button("🔄 Recargar preparativos desde GitHub"):
+        recargar_preparativos()
+
     with st.expander("Agregar nueva tarea"):
         tarea_nueva = st.text_input("Tarea", key="tarea_nueva")
         costo_nuevo = st.number_input("Costo (CAD)", min_value=0.0, step=0.01, format="%.2f", key="costo_nuevo")
@@ -171,16 +197,17 @@ with tab2:
         notas_nuevo = st.text_area("Notas", key="notas_nuevo")
 
         if st.button("Agregar tarea"):
-            nueva_tarea = {
-                "Tarea": tarea_nueva.strip(),
-                "Costo": costo_nuevo,
-                "Estado": estado_nuevo,
-                "Notas": notas_nuevo.strip()
-            }
-            st.session_state.df_preparativos = pd.concat([st.session_state.df_preparativos, pd.DataFrame([nueva_tarea])], ignore_index=True)
-            guardar_en_github("preparativos.csv", st.session_state.df_preparativos.to_csv(index=False), "Auto-guardado: tarea agregada")
-            st.success(f"Tarea '{tarea_nueva}' agregada.")
-            # Aquí puedes decidir si hacer rerun o no, depende de tu flujo
+            if tarea_nueva.strip() == "":
+                st.warning("La tarea no puede estar vacía.")
+            else:
+                nueva_tarea = {
+                    "Tarea": tarea_nueva.strip(),
+                    "Costo": costo_nuevo,
+                    "Estado": estado_nuevo,
+                    "Notas": notas_nuevo.strip()
+                }
+                st.session_state.df_preparativos = pd.concat([st.session_state.df_preparativos, pd.DataFrame([nueva_tarea])], ignore_index=True)
+                st.success(f"Tarea '{tarea_nueva}' agregada. Recuerda guardar los cambios con el botón 💾.")
 
     if not st.session_state.df_preparativos.empty:
         st.subheader("Editar tarea existente")
@@ -196,10 +223,21 @@ with tab2:
             notas_edit = st.text_area("Notas", value=tarea["Notas"], key="notas_edit")
 
             if st.button("Guardar cambios", key="guardar_prep"):
-                st.session_state.df_preparativos.loc[idx_p] = [tarea_edit.strip(), costo_edit, estado_edit, notas_edit.strip()]
-                guardar_en_github("preparativos.csv", st.session_state.df_preparativos.to_csv(index=False), "Auto-guardado: tarea editada")
-                st.success("Tarea actualizada.")
-                # Aquí también puedes decidir si hacer rerun o no
+                if tarea_edit.strip() == "":
+                    st.warning("La tarea no puede estar vacía.")
+                else:
+                    st.session_state.df_preparativos.loc[idx_p] = [tarea_edit.strip(), costo_edit, estado_edit, notas_edit.strip()]
+                    st.success("Tarea actualizada. Recuerda guardar los cambios con el botón 💾.")
+
+        st.subheader("Borrar tarea(s)")
+        tareas_para_borrar = st.multiselect("Selecciona una o varias tareas para borrar", st.session_state.df_preparativos["Tarea"].tolist(), key="borrar_tareas")
+
+        if st.button("Borrar seleccionado(s)"):
+            if tareas_para_borrar:
+                st.session_state.df_preparativos = st.session_state.df_preparativos[~st.session_state.df_preparativos["Tarea"].isin(tareas_para_borrar)].reset_index(drop=True)
+                st.success(f"Tarea(s) {', '.join(tareas_para_borrar)} borrada(s). Recuerda guardar los cambios con el botón 💾.")
+            else:
+                st.warning("No seleccionaste ninguna tarea para borrar.")
 
         def color_estado(val):
             if val == "En progreso":
