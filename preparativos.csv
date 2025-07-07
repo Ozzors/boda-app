@@ -1,6 +1,6 @@
 Tarea,Costo,Estado,Notas
 Bouquet,100,Completado,Floristería confirmada
-Vestido,1500,En progreso,Prueba final programada
+Vestido,700,Completado,"Solo falta la medida final, ya esta pago"
 Maquillaje y peinado,200,Por definir,Buscando estilista
 Traje novio,500,Completado,Arreglos terminados
 Corbata,50,Completado,Comprada en tienda local
@@ -17,4 +17,3 @@ Decoración,600,Por definir,Ideas en discusión
 Cuchillo de torta,40,Completado,Adquirido
 Bolígrafo de la firma,15,Completado,Comprado
 Habitación hotel,700,En progreso,Reservación parcial
-
