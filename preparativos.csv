@@ -1,19 +1,18 @@
 Tarea,Costo,Estado,Notas
-Bouquet,100,Completado,Floristería confirmada
-Vestido,1500,En progreso,Prueba final programada
-Maquillaje y peinado,200,Por definir,Buscando estilista
-Traje novio,500,Completado,Arreglos terminados
-Corbata,50,Completado,Comprada en tienda local
-Pin,30,En progreso,Pedido en línea
-Medias,20,Completado,Regalo recibido
-Torta,400,Completado,Pastelería contratada
-Fotógrafo,800,En progreso,Contratación pendiente
-Notario,300,Por definir,Esperando cita
-Anillos,1200,En progreso,Compra en proceso
-Pre invitaciones enviadas,150,Completado,Correo enviado
-Invitaciones con detalle,250,En progreso,Impresión en curso
-Locación del evento,1000,Completado,Confirmada y pagada
-Decoración,600,Por definir,Ideas en discusión
-Cuchillo de torta,40,Completado,Adquirido
-Bolígrafo de la firma,15,Completado,Comprado
-Habitación hotel,700,En progreso,Reservación parcial
+Bouquet,100.0,Completado,Floristería confirmada
+Vestido,1500.0,En progreso,Prueba final programada
+Traje novio,500.0,Completado,Arreglos terminados
+Corbata,50.0,Completado,Comprada en tienda local
+Pin,30.0,En progreso,Pedido en línea
+Medias,20.0,Completado,Regalo recibido
+Torta,400.0,Completado,Pastelería contratada
+Fotógrafo,800.0,En progreso,Contratación pendiente
+Notario,300.0,Por definir,Esperando cita
+Anillos,1200.0,En progreso,Compra en proceso
+Pre invitaciones enviadas,150.0,Completado,Correo enviado
+Invitaciones con detalle,250.0,En progreso,Impresión en curso
+Locación del evento,1000.0,Completado,Confirmada y pagada
+Decoración,600.0,Por definir,Ideas en discusión
+Cuchillo de torta,40.0,Completado,Adquirido
+Bolígrafo de la firma,15.0,Completado,Comprado
+Habitacion de hotel,0.0,Pendiente,Buscando para las noches del 8 y 9 de Agosto
