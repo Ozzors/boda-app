@@ -106,7 +106,19 @@ with tab1:
             acompañantes_edit = st.number_input("Acompañantes", min_value=0, step=1, value=int(invitado["Acompañantes"]), key="acompañantes_edit")
             relacion_edit = st.text_input("Relación", value=invitado["Relación"], key="relacion_edit")
             comentarios_edit = st.text_area("Comentarios", value=invitado["Comentarios"], key="comentarios_edit")
-            confirmacion_edit = st.selectbox("Confirmación", options=["Sí", "No", "Por definir"], index=["Sí", "No", "Por definir"].index(invitado["Confirmación"]), key="confirmacion_edit")
+
+            opciones_confirmacion = ["Sí", "No", "Por definir"]
+            try:
+                idx_confirmacion = opciones_confirmacion.index(invitado["Confirmación"])
+            except ValueError:
+                idx_confirmacion = 0  # Valor por defecto si no encuentra
+
+            confirmacion_edit = st.selectbox(
+                "Confirmación",
+                options=opciones_confirmacion,
+                index=idx_confirmacion,
+                key="confirmacion_edit"
+            )
 
             if st.button("Guardar cambios", key="guardar_inv"):
                 st.session_state.df_invitados.loc[idx] = [nombre_edit, acompañantes_edit, relacion_edit, comentarios_edit, confirmacion_edit]
