@@ -116,7 +116,6 @@ with tab1:
 
         st.subheader("Lista completa de invitados")
         st.dataframe(st.session_state.df_invitados)
-
     else:
         st.info("No hay invitados registrados aún.")
 
