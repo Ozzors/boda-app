@@ -1,181 +1,224 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import numpy as np
+import datetime
+from io import BytesIO
+import base64
 import requests
-from io import StringIO
+from github import Github, InputGitAuthor
 
-# URLs para cargar los datos
-RUTA_INVITADOS = "https://raw.githubusercontent.com/Ozzors/boda-app/refs/heads/main/invitados.csv"
-RUTA_PREPARATIVOS = "https://raw.githubusercontent.com/Ozzors/boda-app/refs/heads/main/preparativos.csv"
+# URL archivos CSV en GitHub (tu repo privado)
+URL_INVITADOS = "https://raw.githubusercontent.com/Ozzors/boda-app/main/invitados.csv"
+URL_PREPARATIVOS = "https://raw.githubusercontent.com/Ozzors/boda-app/main/preparativos.csv"
 
-# Función para guardar en GitHub (requiere token configurado en secrets)
-def guardar_en_github(ruta, contenido, mensaje):
-    import base64
-    import requests
+# Fecha de boda
+FECHA_BODA = datetime.datetime(2025, 8, 9, 15, 0, 0)
 
-    token = st.secrets["GITHUB_TOKEN"]
-    repo = "Ozzors/boda-app"
-    url = f"https://api.github.com/repos/{repo}/contents/{ruta}"
-
-    # Obtener SHA del archivo para actualización
-    headers = {"Authorization": f"token {token}"}
-    r = requests.get(url, headers=headers)
-    if r.status_code == 200:
-        sha = r.json()["sha"]
-    else:
-        sha = None
-
-    data = {
-        "message": mensaje,
-        "content": base64.b64encode(contenido.encode()).decode(),
-        "branch": "main"
-    }
-    if sha:
-        data["sha"] = sha
-
-    r = requests.put(url, headers=headers, json=data)
-    if r.status_code not in [200, 201]:
-        st.error(f"Error guardando en GitHub: {r.json().get('message')}")
-    else:
-        st.success("Datos guardados en GitHub correctamente")
-
-# Cargar datos desde GitHub
-@st.cache_data(ttl=600)
-def cargar_datos(url):
+# Función para descargar CSV desde GitHub
+@st.cache_data(ttl=3600)
+def cargar_csv(url):
     try:
-        r = requests.get(url)
-        r.raise_for_status()
-        df = pd.read_csv(StringIO(r.text))
-        return df
+        df = pd.read_csv(url)
     except Exception as e:
         st.error(f"Error cargando datos: {e}")
-        return pd.DataFrame()
+        df = pd.DataFrame()
+    return df
 
-# Inicializar sesión estado
+# Función para convertir dataframes a archivo Excel en memoria
+def to_excel(dfs_dict):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        for sheet_name, df in dfs_dict.items():
+            df.to_excel(writer, index=False, sheet_name=sheet_name)
+    processed_data = output.getvalue()
+    return processed_data
+
+# Función para guardar archivos CSV en GitHub (requiere token con permisos)
+def guardar_en_github(filename, content, commit_message):
+    try:
+        token = st.secrets["GITHUB_TOKEN"]
+        g = Github(token)
+        repo = g.get_repo("Ozzors/boda-app")
+        file_path = filename
+        # Buscar archivo en repo
+        try:
+            contents = repo.get_contents(file_path)
+            repo.update_file(contents.path, commit_message, content, contents.sha)
+        except:
+            repo.create_file(file_path, commit_message, content)
+    except Exception as e:
+        st.error(f"Error al guardar en GitHub: {e}")
+
+# Inicializar session_state para invitados y preparativos
 if "df_invitados" not in st.session_state:
-    st.session_state.df_invitados = cargar_datos(RUTA_INVITADOS)
+    st.session_state.df_invitados = cargar_csv(URL_INVITADOS)
 if "df_preparativos" not in st.session_state:
-    st.session_state.df_preparativos = cargar_datos(RUTA_PREPARATIVOS)
+    st.session_state.df_preparativos = cargar_csv(URL_PREPARATIVOS)
 
-# Título y contador para la boda
-st.title("📋 Planificador de Boda")
+st.title("Planificador de Boda")
 
-fecha_boda = datetime(2025, 8, 9, 15, 0, 0)
-ahora = datetime.now()
-diferencia = fecha_boda - ahora
+# Contador regresivo
+ahora = datetime.datetime.now()
+diferencia = FECHA_BODA - ahora
 dias = diferencia.days
 horas = diferencia.seconds // 3600
-st.markdown(f"### ⏳ Faltan {dias} días y {horas} horas para la boda")
+st.markdown(f"### ⏳ Faltan {dias} días y {horas} horas para la boda ({FECHA_BODA.strftime('%d %b %Y %H:%M')})")
 
-# Tabs para secciones
-tab1, tab2, tab3, tab4 = st.tabs(["Invitados", "Preparativos", "Presupuesto", "Exportar"])
+# Pestañas
+tabs = st.tabs(["Invitados", "Preparativos", "Presupuesto", "Exportar"])
 
-with tab1:
-    st.header("👥 Invitados")
-    df = st.session_state.df_invitados.copy()
+# --- Invitados ---
+with tabs[0]:
+    st.header("Invitados")
 
-    # Contador confirmados y por definir
-    confirmados = df[df["Confirmación"] == "Sí"]["Acompañantes"].sum() + df[df["Confirmación"] == "Sí"].shape[0]
-    por_definir = df.shape[0] - df[df["Confirmación"] == "Sí"].shape[0]
-    st.write(f"**Confirmados (incluyendo acompañantes):** {confirmados}")
-    st.write(f"**Por definir:** {por_definir}")
+    # Mostrar resumen contador invitados
+    confirmados = st.session_state.df_invitados[st.session_state.df_invitados["Confirmación"] == "Sí"]["Acompañantes"].sum() + st.session_state.df_invitados[st.session_state.df_invitados["Confirmación"] == "Sí"].shape[0]
+    por_definir = st.session_state.df_invitados[st.session_state.df_invitados["Confirmación"] != "Sí"]["Acompañantes"].sum() + st.session_state.df_invitados[st.session_state.df_invitados["Confirmación"] != "Sí"].shape[0]
+    st.info(f"Invitados confirmados (incluyendo acompañantes): {confirmados}")
+    st.info(f"Invitados por definir (incluyendo acompañantes): {por_definir}")
 
-    # Mostrar tabla editable
-    editar_idx = st.selectbox("Selecciona un invitado para editar", options=["--Nuevo invitado--"] + df.index.astype(str).tolist())
-    
-    if editar_idx != "--Nuevo invitado--":
-        idx = int(editar_idx)
-        invitado = df.loc[idx]
-        nombre = st.text_input("Nombre", value=invitado["Nombre"])
-        acompanantes = st.number_input("Acompañantes", min_value=0, value=int(invitado["Acompañantes"]))
-        relacion = st.text_input("Relación", value=invitado["Relación"])
-        comentarios = st.text_area("Comentarios", value=invitado["Comentarios"])
-        confirmacion = st.selectbox("Confirmación", options=["Sí", "No", "Por definir"], index=["Sí", "No", "Por definir"].index(invitado["Confirmación"]))
-        
-        if st.button("Guardar invitado editado"):
-            st.session_state.df_invitados.at[idx, "Nombre"] = nombre
-            st.session_state.df_invitados.at[idx, "Acompañantes"] = acompanantes
-            st.session_state.df_invitados.at[idx, "Relación"] = relacion
-            st.session_state.df_invitados.at[idx, "Comentarios"] = comentarios
-            st.session_state.df_invitados.at[idx, "Confirmación"] = confirmacion
-            guardar_en_github(RUTA_INVITADOS, st.session_state.df_invitados.to_csv(index=False), "Auto-guardado: invitado editado")
-            st.success("Invitado editado correctamente")
-            st.experimental_rerun()
-            st.stop()
-    else:
-        st.subheader("Agregar nuevo invitado")
-        nombre = st.text_input("Nombre")
-        acompanantes = st.number_input("Acompañantes", min_value=0, value=0)
-        relacion = st.text_input("Relación")
-        comentarios = st.text_area("Comentarios")
-        confirmacion = st.selectbox("Confirmación", options=["Sí", "No", "Por definir"])
+    # Agregar nuevo invitado
+    with st.expander("Agregar nuevo invitado"):
+        nuevo_nombre = st.text_input("Nombre")
+        nuevos_acomp = st.number_input("Número de acompañantes", min_value=0, max_value=10, step=1)
+        nueva_relacion = st.text_input("Relación")
+        nuevo_comentario = st.text_area("Comentarios")
+        nueva_confirmacion = st.selectbox("Confirmación", options=["Sí", "No", "Por definir"])
 
         if st.button("Agregar invitado"):
-            nuevo = pd.DataFrame([{
-                "Nombre": nombre,
-                "Acompañantes": acompanantes,
-                "Relación": relacion,
-                "Comentarios": comentarios,
-                "Confirmación": confirmacion
-            }])
-            st.session_state.df_invitados = pd.concat([df, nuevo], ignore_index=True)
-            guardar_en_github(RUTA_INVITADOS, st.session_state.df_invitados.to_csv(index=False), "Auto-guardado: nuevo invitado")
-            st.success("✅ Invitado agregado")
-            st.experimental_rerun()
-            st.stop()
+            if nuevo_nombre.strip() == "":
+                st.warning("El nombre no puede estar vacío.")
+            else:
+                nuevo = {
+                    "Nombre": nuevo_nombre.strip(),
+                    "Acompañantes": nuevos_acomp,
+                    "Relación": nueva_relacion.strip(),
+                    "Comentarios": nuevo_comentario.strip(),
+                    "Confirmación": nueva_confirmacion,
+                }
+                st.session_state.df_invitados = pd.concat([st.session_state.df_invitados, pd.DataFrame([nuevo])], ignore_index=True)
 
-with tab2:
-    st.header("🎀 Preparativos")
-    dfp = st.session_state.df_preparativos.copy()
+                # Guardar en GitHub
+                csv_string = st.session_state.df_invitados.to_csv(index=False)
+                guardar_en_github("invitados.csv", csv_string, "Agregado nuevo invitado desde app")
+                st.experimental_rerun()
 
-    estados = ["Pendiente", "En progreso", "Completado"]
-    colores = {"Pendiente": "", "En progreso": "yellow", "Completado": "lightgreen"}
+    # Editar invitado existente
+    with st.expander("Editar invitado existente"):
+        if st.session_state.df_invitados.empty:
+            st.write("No hay invitados para editar.")
+        else:
+            indice_seleccionado = st.selectbox("Selecciona invitado a editar", st.session_state.df_invitados.index)
+            invitado = st.session_state.df_invitados.loc[indice_seleccionado]
 
-    editar_p_idx = st.selectbox("Selecciona un preparativo para editar", options=["--Nuevo preparativo--"] + dfp.index.astype(str).tolist())
+            nombre_edit = st.text_input("Nombre", value=invitado["Nombre"])
+            acomp_edit = st.number_input("Número de acompañantes", min_value=0, max_value=10, step=1, value=int(invitado["Acompañantes"]))
+            relacion_edit = st.text_input("Relación", value=invitado["Relación"])
+            comentario_edit = st.text_area("Comentarios", value=invitado["Comentarios"])
+            confirmacion_edit = st.selectbox("Confirmación", options=["Sí", "No", "Por definir"], index=["Sí", "No", "Por definir"].index(invitado["Confirmación"]))
 
-    if editar_p_idx != "--Nuevo preparativo--":
-        idxp = int(editar_p_idx)
-        prep = dfp.loc[idxp]
-        item = st.text_input("Elemento", value=prep["Elemento"])
-        costo = st.number_input("Costo", min_value=0.0, value=float(prep["Costo"]))
-        estado = st.selectbox("Estado", estados, index=estados.index(prep["Estado"]))
-        notas = st.text_area("Notas", value=prep["Notas"])
+            if st.button("Guardar cambios invitado"):
+                st.session_state.df_invitados.loc[indice_seleccionado, "Nombre"] = nombre_edit.strip()
+                st.session_state.df_invitados.loc[indice_seleccionado, "Acompañantes"] = acomp_edit
+                st.session_state.df_invitados.loc[indice_seleccionado, "Relación"] = relacion_edit.strip()
+                st.session_state.df_invitados.loc[indice_seleccionado, "Comentarios"] = comentario_edit.strip()
+                st.session_state.df_invitados.loc[indice_seleccionado, "Confirmación"] = confirmacion_edit
 
-        if st.button("Guardar preparativo editado"):
-            st.session_state.df_preparativos.at[idxp, "Elemento"] = item
-            st.session_state.df_preparativos.at[idxp, "Costo"] = costo
-            st.session_state.df_preparativos.at[idxp, "Estado"] = estado
-            st.session_state.df_preparativos.at[idxp, "Notas"] = notas
-            guardar_en_github(RUTA_PREPARATIVOS, st.session_state.df_preparativos.to_csv(index=False), "Auto-guardado: preparativo editado")
-            st.success("Preparativo editado correctamente")
-            st.experimental_rerun()
-            st.stop()
-    else:
-        st.subheader("Agregar nuevo preparativo")
-        item = st.text_input("Elemento")
-        costo = st.number_input("Costo", min_value=0.0, value=0.0)
-        estado = st.selectbox("Estado", estados)
-        notas = st.text_area("Notas")
+                csv_string = st.session_state.df_invitados.to_csv(index=False)
+                guardar_en_github("invitados.csv", csv_string, "Editado invitado desde app")
+                st.experimental_rerun()
+
+    st.subheader("Lista completa de invitados")
+    st.dataframe(st.session_state.df_invitados)
+
+# --- Preparativos ---
+with tabs[1]:
+    st.header("Preparativos")
+
+    # Agregar nuevo preparativo
+    with st.expander("Agregar nuevo preparativo"):
+        nuevo_tarea = st.text_input("Tarea")
+        nuevo_costo = st.number_input("Costo", min_value=0.0, step=0.01)
+        nuevo_estado = st.selectbox("Estado", ["Pendiente", "En progreso", "Completado"])
+        nueva_nota = st.text_area("Notas")
 
         if st.button("Agregar preparativo"):
-            nuevo_p = pd.DataFrame([{
-                "Elemento": item,
-                "Costo": costo,
-                "Estado": estado,
-                "Notas": notas
-            }])
-            st.session_state.df_preparativos = pd.concat([dfp, nuevo_p], ignore_index=True)
-            guardar_en_github(RUTA_PREPARATIVOS, st.session_state.df_preparativos.to_csv(index=False), "Auto-guardado: nuevo preparativo")
-            st.success("✅ Preparativo agregado")
-            st.experimental_rerun()
-            st.stop()
+            if nuevo_tarea.strip() == "":
+                st.warning("La tarea no puede estar vacía.")
+            else:
+                nuevo_prep = {
+                    "Tarea": nuevo_tarea.strip(),
+                    "Costo": nuevo_costo,
+                    "Estado": nuevo_estado,
+                    "Notas": nueva_nota.strip(),
+                }
+                st.session_state.df_preparativos = pd.concat([st.session_state.df_preparativos, pd.DataFrame([nuevo_prep])], ignore_index=True)
 
-with tab3:
-    st.header("💰 Presupuesto")
+                csv_string = st.session_state.df_preparativos.to_csv(index=False)
+                guardar_en_github("preparativos.csv", csv_string, "Agregado nuevo preparativo desde app")
+                st.experimental_rerun()
+
+    # Editar preparativo existente
+    with st.expander("Editar preparativo existente"):
+        if st.session_state.df_preparativos.empty:
+            st.write("No hay preparativos para editar.")
+        else:
+            indice_prep = st.selectbox("Selecciona preparativo a editar", st.session_state.df_preparativos.index)
+            prep = st.session_state.df_preparativos.loc[indice_prep]
+
+            tarea_edit = st.text_input("Tarea", value=prep["Tarea"])
+            costo_edit = st.number_input("Costo", min_value=0.0, step=0.01, value=float(prep["Costo"]))
+            estado_edit = st.selectbox("Estado", ["Pendiente", "En progreso", "Completado"], index=["Pendiente", "En progreso", "Completado"].index(prep["Estado"]))
+            nota_edit = st.text_area("Notas", value=prep["Notas"])
+
+            # Mostrar color según estado
+            color_estado = {"Pendiente": "grey", "En progreso": "orange", "Completado": "green"}[estado_edit]
+            st.markdown(f"<span style='color:{color_estado};font-weight:bold'>Estado: {estado_edit}</span>", unsafe_allow_html=True)
+
+            if st.button("Guardar cambios preparativo"):
+                st.session_state.df_preparativos.loc[indice_prep, "Tarea"] = tarea_edit.strip()
+                st.session_state.df_preparativos.loc[indice_prep, "Costo"] = costo_edit
+                st.session_state.df_preparativos.loc[indice_prep, "Estado"] = estado_edit
+                st.session_state.df_preparativos.loc[indice_prep, "Notas"] = nota_edit.strip()
+
+                csv_string = st.session_state.df_preparativos.to_csv(index=False)
+                guardar_en_github("preparativos.csv", csv_string, "Editado preparativo desde app")
+                st.experimental_rerun()
+
+    st.subheader("Lista completa de preparativos")
+    # Mostrar colores en columna Estado
+    def colorear_estado(estado):
+        if estado == "Completado":
+            return "background-color: lightgreen"
+        elif estado == "En progreso":
+            return "background-color: yellow"
+        else:
+            return ""
+
+    styled_df = st.session_state.df_preparativos.style.applymap(colorear_estado, subset=["Estado"])
+    st.dataframe(styled_df)
+
+# --- Presupuesto ---
+with tabs[2]:
+    st.header("Presupuesto")
     total_costo = st.session_state.df_preparativos["Costo"].sum()
-    st.write(f"**Costo total estimado: ${total_costo:,.2f}**")
+    st.metric("Costo total estimado", f"${total_costo:,.2f}")
 
-with tab4:
-    st.header("📥 Exportar datos")
-    st.write("Actualmente la opción de exportar a Excel no está disponible para evitar dependencias externas.")
+# --- Exportar ---
+with tabs[3]:
+    st.header("Exportar a Excel")
+
+    data_frames = {
+        "Invitados": st.session_state.df_invitados,
+        "Preparativos": st.session_state.df_preparativos,
+    }
+
+    excel_data = to_excel(data_frames)
+
+    st.download_button(
+        label="📥 Descargar Excel con datos de boda",
+        data=excel_data,
+        file_name="datos_boda.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
