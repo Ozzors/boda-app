@@ -1,175 +1,156 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import requests
+import base64
+from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Planificador de Boda", layout="wide")
+# -------- CONFIG --------
+GITHUB_REPO = "Ozzors/boda-app"
+INVITADOS_FILE = "invitados.csv"
+PREPARATIVOS_FILE = "preparativos.csv"
+BRANCH = "main"
 
-# ---------- FUNCIONES ----------
-def cargar_csv(nombre_archivo, columnas, datos_iniciales=None):
+# -------- FUNCION PARA SUBIR ARCHIVOS A GITHUB --------
+def subir_a_github(nombre_archivo, df):
+    token = st.secrets["github_token"]
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{nombre_archivo}"
+
+    # Convertir DataFrame a string CSV codificado en base64
+    csv_content = df.to_csv(index=False)
+    b64_content = base64.b64encode(csv_content.encode()).decode()
+
+    # Obtener el SHA del archivo actual
+    r = requests.get(url, headers={"Authorization": f"token {token}"})
+    if r.status_code == 200:
+        sha = r.json()["sha"]
+    else:
+        sha = None
+
+    # Preparar payload
+    payload = {
+        "message": f"Actualizando {nombre_archivo} desde Streamlit",
+        "content": b64_content,
+        "branch": BRANCH,
+    }
+    if sha:
+        payload["sha"] = sha
+
+    # PUT a GitHub
+    r = requests.put(url, headers={"Authorization": f"token {token}"}, json=payload)
+    if r.status_code in [200, 201]:
+        st.success(f"'{nombre_archivo}' actualizado en GitHub ✅")
+    else:
+        st.error(f"Error al subir '{nombre_archivo}': {r.text}")
+
+# --------- CARGA DE DATOS DESDE GITHUB ---------
+def cargar_csv_desde_github(nombre_archivo):
+    url_raw = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{BRANCH}/{nombre_archivo}"
     try:
-        return pd.read_csv(nombre_archivo)
-    except FileNotFoundError:
-        if datos_iniciales is not None:
-            return pd.DataFrame(datos_iniciales, columns=columnas)
-        else:
-            return pd.DataFrame(columns=columnas)
+        return pd.read_csv(url_raw)
+    except Exception:
+        return pd.DataFrame()
 
-def guardar_csv(df, nombre_archivo):
-    df.to_csv(nombre_archivo, index=False)
+# --------- SETUP ---------
+st.set_page_config(page_title="App de Boda", layout="wide")
+st.title("💍 App de Planificación de Boda")
 
-# ---------- DATOS INICIALES ----------
-preparativos_iniciales = [
-    {"Elemento": "Bouquet de la novia", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Vestido de la novia", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Maquillaje y peinado", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Traje de novio", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Corbata, pin y medias", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Torta", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Fotógrafo", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Notario", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Anillos", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Estado de envío de pre-invitaciones", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Invitaciones con detalle", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Locación del evento", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Decoración", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Compra de cuchillo de torta", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Bolígrafo de la firma", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-    {"Elemento": "Habitación del hotel", "Estado": "Pendiente", "Costo": 0.0, "Notas": ""},
-]
+# Contador
+fecha_boda = datetime(2025, 8, 9, 0, 0)
+tiempo_restante = fecha_boda - datetime.now()
+dias = tiempo_restante.days
+horas = tiempo_restante.seconds // 3600
+st.info(f"⏳ Faltan **{dias} días** y **{horas} horas** para la boda")
 
-# ---------- CARGA DE DATOS ----------
-df_invitados = cargar_csv("invitados.csv", ["Nombre", "Acompañantes", "Relación", "Confirmación", "Comentarios"])
-df_preparativos = cargar_csv("preparativos.csv", ["Elemento", "Estado", "Costo", "Notas"], preparativos_iniciales)
+# --------- CARGA INICIAL A SESSION STATE ---------
+if "df_invitados" not in st.session_state:
+    st.session_state.df_invitados = cargar_csv_desde_github(INVITADOS_FILE)
 
-# ---------- UI: CONTADOR DE BODA ----------
-st.title("💒 Planificador de Boda")
+if "df_preparativos" not in st.session_state:
+    st.session_state.df_preparativos = cargar_csv_desde_github(PREPARATIVOS_FILE)
 
-col1, col2 = st.columns([3, 1])
-with col2:
-    fecha_boda = datetime(2025, 8, 9, 15, 0)
-    ahora = datetime.now()
-    tiempo = fecha_boda - ahora
-    dias = tiempo.days
-    horas = tiempo.seconds // 3600
-    st.metric("⏳ Faltan:", f"{dias} días, {horas} horas")
+# --------- INTERFAZ DE TABS ---------
+tabs = st.tabs(["👥 Invitados", "🎯 Preparativos", "💰 Presupuesto", "📤 Exportar"])
 
-# ---------- TABS ----------
-tabs = st.tabs(["👥 Invitados", "📋 Preparativos", "💰 Presupuesto", "📝 Notas"])
-
-# ---------- TAB 1: INVITADOS ----------
+# -------- TAB INVITADOS --------
 with tabs[0]:
-    st.subheader("Invitados")
+    st.header("👥 Gestión de Invitados")
 
-    with st.expander("➕ Agregar nuevo invitado"):
-        with st.form("form_invitado", clear_on_submit=True):
-            nombre = st.text_input("Nombre")
-            acompanantes = st.number_input("Acompañantes", min_value=0, step=1)
-            relacion = st.selectbox("Relación", ["Familia", "Amigo", "Trabajo", "Otro"])
-            confirmacion = st.selectbox("Confirmación", ["Pendiente", "Confirmado", "No asistirá"])
-            comentario = st.text_input("Comentario")
-            submit = st.form_submit_button("Agregar")
-            if submit and nombre:
-                nuevo = {
-                    "Nombre": nombre,
-                    "Acompañantes": acompanantes,
-                    "Relación": relacion,
-                    "Confirmación": confirmacion,
-                    "Comentarios": comentario
-                }
-                df_invitados = pd.concat([df_invitados, pd.DataFrame([nuevo])], ignore_index=True)
-                guardar_csv(df_invitados, "invitados.csv")
-                st.success(f"{nombre} agregado")
+    with st.form("form_invitado"):
+        nombre = st.text_input("Nombre del invitado")
+        acompanantes = st.number_input("Cantidad de acompañantes", min_value=0, step=1)
+        relacion = st.selectbox("Relación", ["Familiar", "Amigo", "Trabajo", "Otro"])
+        comentarios = st.text_input("Comentarios")
+        confirmacion = st.selectbox("¿Confirmado?", ["Por definir", "Sí", "No"])
+        submitted = st.form_submit_button("Agregar")
 
-    if not df_invitados.empty:
-        index = st.selectbox("Editar invitado", df_invitados.index, format_func=lambda i: df_invitados.at[i, "Nombre"])
-        with st.form("edit_invitado"):
-            row = df_invitados.loc[index]
-            nuevo_nombre = st.text_input("Nombre", value=row["Nombre"])
-            nuevo_acomp = st.number_input("Acompañantes", min_value=0, value=int(row["Acompañantes"]))
-            nueva_relacion = st.selectbox("Relación", ["Familia", "Amigo", "Trabajo", "Otro"], index=["Familia", "Amigo", "Trabajo", "Otro"].index(row["Relación"]))
-            nueva_confirm = st.selectbox("Confirmación", ["Pendiente", "Confirmado", "No asistirá"], index=["Pendiente", "Confirmado", "No asistirá"].index(row["Confirmación"]))
-            nuevo_coment = st.text_input("Comentario", value=row["Comentarios"])
-            guardar = st.form_submit_button("Guardar cambios")
-            eliminar = st.form_submit_button("Eliminar")
-            if guardar:
-                df_invitados.loc[index] = [nuevo_nombre, nuevo_acomp, nueva_relacion, nueva_confirm, nuevo_coment]
-                guardar_csv(df_invitados, "invitados.csv")
-                st.success("Cambios guardados")
-            elif eliminar:
-                df_invitados = df_invitados.drop(index).reset_index(drop=True)
-                guardar_csv(df_invitados, "invitados.csv")
-                st.success("Eliminado")
-
-    # ---- CONTADOR DE INVITADOS ----
-    confirmados = df_invitados[df_invitados["Confirmación"] == "Confirmado"]
-    pendientes = df_invitados[df_invitados["Confirmación"] == "Pendiente"]
-    total_confirmados = (confirmados["Acompañantes"] + 1).sum()
-    total_pendientes = (pendientes["Acompañantes"] + 1).sum()
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("🎉 Invitados confirmados", int(total_confirmados))
-    with col2:
-        st.metric("⏳ Invitados pendientes", int(total_pendientes))
-
-    st.dataframe(df_invitados, use_container_width=True)
-
-# ---------- TAB 2: PREPARATIVOS ----------
-with tabs[1]:
-    st.subheader("Preparativos")
-
-    with st.expander("➕ Agregar nuevo elemento"):
-        with st.form("form_prep", clear_on_submit=True):
-            elem = st.text_input("Elemento")
-            estado = st.selectbox("Estado", ["Pendiente", "En progreso", "Completado"])
-            costo = st.number_input("Costo ($)", min_value=0.0, step=1.0)
-            notas = st.text_area("Notas")
-            agregar = st.form_submit_button("Agregar")
-            if agregar and elem:
-                nuevo = {"Elemento": elem, "Estado": estado, "Costo": costo, "Notas": notas}
-                df_preparativos = pd.concat([df_preparativos, pd.DataFrame([nuevo])], ignore_index=True)
-                guardar_csv(df_preparativos, "preparativos.csv")
-                st.success("Elemento agregado")
-
-    if not df_preparativos.empty:
-        idx = st.selectbox("Editar elemento", df_preparativos.index, format_func=lambda i: df_preparativos.at[i, "Elemento"])
-        with st.form("edit_prep"):
-            fila = df_preparativos.loc[idx]
-            nuevo_elem = st.text_input("Elemento", value=fila["Elemento"])
-            nuevo_estado = st.selectbox("Estado", ["Pendiente", "En progreso", "Completado"], index=["Pendiente", "En progreso", "Completado"].index(fila["Estado"]))
-            nuevo_costo = st.number_input("Costo", value=float(fila["Costo"]))
-            nueva_nota = st.text_area("Notas", value=fila["Notas"])
-            guardar = st.form_submit_button("Guardar cambios")
-            eliminar = st.form_submit_button("Eliminar")
-            if guardar:
-                df_preparativos.loc[idx] = [nuevo_elem, nuevo_estado, nuevo_costo, nueva_nota]
-                guardar_csv(df_preparativos, "preparativos.csv")
-                st.success("Cambios guardados")
-            elif eliminar:
-                df_preparativos = df_preparativos.drop(idx).reset_index(drop=True)
-                guardar_csv(df_preparativos, "preparativos.csv")
-                st.success("Eliminado")
-
-    # ---- VISUAL CON COLORES ----
-    def color_estado(estado):
-        colores = {
-            "Pendiente": "#FFCDD2",     # Rojo claro
-            "En progreso": "#FFF9C4",   # Amarillo claro
-            "Completado": "#C8E6C9"     # Verde claro
+    if submitted and nombre:
+        nuevo = {
+            "Nombre": nombre,
+            "Acompañantes": acompanantes,
+            "Relación": relacion,
+            "Comentarios": comentarios,
+            "Confirmación": confirmacion
         }
-        return f"background-color: {colores.get(estado, 'white')}"
+        st.session_state.df_invitados = pd.concat([
+            st.session_state.df_invitados,
+            pd.DataFrame([nuevo])
+        ], ignore_index=True)
+        subir_a_github(INVITADOS_FILE, st.session_state.df_invitados)
 
-    df_estilo = df_preparativos.style.applymap(color_estado, subset=["Estado"])
-    st.dataframe(df_estilo, use_container_width=True)
+    # Contadores
+    confirmados = st.session_state.df_invitados[st.session_state.df_invitados["Confirmación"] == "Sí"]["Acompañantes"].sum() + st.session_state.df_invitados[st.session_state.df_invitados["Confirmación"] == "Sí"].shape[0]
+    por_definir = st.session_state.df_invitados[st.session_state.df_invitados["Confirmación"] == "Por definir"].shape[0]
+    st.metric("Invitados confirmados (con acompañantes)", confirmados)
+    st.metric("Invitados por definir", por_definir)
 
-# ---------- TAB 3: PRESUPUESTO ----------
+    # Edición rápida
+    edited_df = st.data_editor(st.session_state.df_invitados, use_container_width=True, num_rows="dynamic")
+    if edited_df is not None:
+        st.session_state.df_invitados = edited_df
+        subir_a_github(INVITADOS_FILE, st.session_state.df_invitados)
+
+# -------- TAB PREPARATIVOS --------
+with tabs[1]:
+    st.header("🎯 Estado de Preparativos")
+
+    with st.form("form_preparativos"):
+        elemento = st.text_input("Elemento")
+        estado = st.selectbox("Estado", ["Por hacer", "En progreso", "Completado"])
+        costo = st.number_input("Costo (CAD)", min_value=0.0, step=10.0)
+        notas = st.text_area("Notas")
+        submitted = st.form_submit_button("Agregar")
+
+    if submitted and elemento:
+        nuevo = {
+            "Elemento": elemento,
+            "Estado": estado,
+            "Costo": costo,
+            "Notas": notas
+        }
+        st.session_state.df_preparativos = pd.concat([
+            st.session_state.df_preparativos,
+            pd.DataFrame([nuevo])
+        ], ignore_index=True)
+        subir_a_github(PREPARATIVOS_FILE, st.session_state.df_preparativos)
+
+    # Agregar colores por estado
+    def color_estado(val):
+        if val == "Completado": return "background-color: lightgreen"
+        if val == "En progreso": return "background-color: #fff3cd"
+        return "background-color: #f8d7da"
+
+    st.dataframe(
+        st.session_state.df_preparativos.style.applymap(color_estado, subset=["Estado"]),
+        use_container_width=True
+    )
+
+# -------- TAB PRESUPUESTO --------
 with tabs[2]:
-    st.subheader("Presupuesto estimado")
-    total = df_preparativos["Costo"].sum()
-    st.metric("💰 Total", f"${total:,.2f}")
-    st.dataframe(df_preparativos[["Elemento", "Costo"]], use_container_width=True)
+    st.header("💰 Presupuesto")
+    total = st.session_state.df_preparativos["Costo"].sum()
+    st.success(f"Total estimado: CAD ${total:,.2f}")
 
-# ---------- TAB 4: NOTAS PERSONALES ----------
+# -------- TAB EXPORTAR --------
 with tabs[3]:
-    st.subheader("Notas personales")
-    notas = st.text_area("Escribe tus notas aquí...")
+    st.header("📤 Exportar a Excel")
+    st.write("(Próximamente disponible si activas XlsxWriter)")
