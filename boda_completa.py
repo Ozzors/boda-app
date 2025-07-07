@@ -20,7 +20,7 @@ def cargar_csv(url):
         st.error(f"No se pudo cargar el archivo desde {url}.\nError: {e}")
         return pd.DataFrame()
 
-# Inicializar dataframes
+# Inicializar dataframes en session_state
 if "df_invitados" not in st.session_state:
     df_invitados = cargar_csv(URL_INVITADOS)
     if df_invitados.empty:
@@ -41,7 +41,7 @@ def to_excel(dfs_dict):
             df.to_excel(writer, index=False, sheet_name=sheet_name)
     return output.getvalue()
 
-# Función para guardar en GitHub (necesita token configurado en st.secrets)
+# Función para guardar en GitHub
 def guardar_en_github(nombre_archivo, contenido_csv, mensaje_commit):
     try:
         token = st.secrets["GITHUB_TOKEN"]
